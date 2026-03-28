@@ -1,5 +1,7 @@
 package com.issr.watch.sensor
 
+import kotlinx.serialization.EncodeDefault
+import kotlinx.serialization.ExperimentalSerializationApi
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 
@@ -15,9 +17,10 @@ data class ImuSample(
     @SerialName("calibration_bias") val calibrationBias: FloatArray? = null  // D-05: optional, null for raw
 )
 
+@OptIn(ExperimentalSerializationApi::class)
 @Serializable
 data class ImuBatch(
     @SerialName("session_id") val sessionId: String,
     @SerialName("samples") val samples: List<ImuSample>,
-    @SerialName("window_ms") val windowMs: Int = 500
+    @EncodeDefault @SerialName("window_ms") val windowMs: Int = 500
 )
