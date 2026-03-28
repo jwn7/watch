@@ -1,0 +1,23 @@
+package com.issr.watch.sensor
+
+import kotlinx.serialization.SerialName
+import kotlinx.serialization.Serializable
+
+@Serializable
+data class ImuSample(
+    @SerialName("ax") val ax: Float,
+    @SerialName("ay") val ay: Float,
+    @SerialName("az") val az: Float,
+    @SerialName("gx") val gx: Float,
+    @SerialName("gy") val gy: Float,
+    @SerialName("gz") val gz: Float,
+    @SerialName("timestamp_ms") val timestampMs: Long,
+    @SerialName("calibration_bias") val calibrationBias: FloatArray? = null  // D-05: optional, null for raw
+)
+
+@Serializable
+data class ImuBatch(
+    @SerialName("session_id") val sessionId: String,
+    @SerialName("samples") val samples: List<ImuSample>,
+    @SerialName("window_ms") val windowMs: Int = 500
+)

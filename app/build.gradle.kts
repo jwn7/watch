@@ -63,6 +63,7 @@ dependencies {
     debugImplementation(libs.ui.test.manifest)
     implementation(libs.okhttp)
     implementation(libs.kotlinx.coroutines.android)
+    implementation(libs.kotlinx.serialization.json)
     implementation(libs.lifecycle.service)
     debugImplementation(libs.okhttp.logging)
     testImplementation(libs.junit4)
