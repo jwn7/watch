@@ -22,5 +22,7 @@ data class ImuSample(
 data class ImuBatch(
     @SerialName("session_id") val sessionId: String,
     @SerialName("samples") val samples: List<ImuSample>,
-    @EncodeDefault @SerialName("window_ms") val windowMs: Int = 500
+    @EncodeDefault @SerialName("window_ms") val windowMs: Int = 500,
+    @SerialName("lat") val lat: Double? = null,
+    @SerialName("lng") val lng: Double? = null
 )

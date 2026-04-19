@@ -1,10 +1,13 @@
 package com.issr.watch.presentation
 
+import android.Manifest
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.os.Bundle
 import android.util.Log
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
@@ -44,6 +47,12 @@ class MainActivity : ComponentActivity() {
     private lateinit var hapticController: HapticController
     private lateinit var stompClient: StompClient
 
+    private val locationPermissionLauncher = registerForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { granted ->
+        Log.d(TAG, "Location permission granted: $granted")
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
@@ -70,6 +79,9 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun startSession() {
+        if (checkSelfPermission(Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED) {
+            locationPermissionLauncher.launch(Manifest.permission.ACCESS_FINE_LOCATION)
+        }
         lifecycleScope.launch(Dispatchers.IO) {
             val sessionId = createSessionOnServer()
             if (sessionId == null) {
@@ -78,20 +90,16 @@ class MainActivity : ComponentActivity() {
             }
             Log.d(TAG, "Session created: $sessionId")
 
-            // Wire ImuBatch callback: ImuService → StompClient
+            // 데이터 수집 모드: STOMP 대신 REST POST로 배치 전송
             ImuService.onBatchReady = { batch ->
-                stompClient.sendBatch(batch)
+                sendBatchToServer(batch, sessionId)
             }
 
-            // Start ImuService (ForegroundService)
             val intent = Intent(this@MainActivity, ImuService::class.java).apply {
                 action = ImuService.ACTION_START
                 putExtra(ImuService.EXTRA_SESSION_ID, sessionId)
             }
             startService(intent)
-
-            // Connect STOMP
-            stompClient.connect(sessionId)
 
             withContext(Dispatchers.Main) {
                 isRunning = true
@@ -108,8 +116,37 @@ class MainActivity : ComponentActivity() {
         }
         startService(intent)
 
-        stompClient.disconnect()
         isRunning = false
+    }
+
+    /**
+     * POST /api/v1/sessions/{sessionId}/imu — IMU 배치를 REST로 전송.
+     * ImuService 코루틴(Dispatchers.IO)에서 호출되므로 블로킹 OK.
+     */
+    private fun sendBatchToServer(batch: com.issr.watch.sensor.ImuBatch, sessionId: String) {
+        try {
+            val samplesJson = batch.samples.joinToString(",", "[", "]") { s ->
+                """{"ax":${s.ax},"ay":${s.ay},"az":${s.az},"gx":${s.gx},"gy":${s.gy},"gz":${s.gz},"timestamp_ms":${s.timestampMs}}"""
+            }
+            val latPart = if (batch.lat != null) ""","lat":${batch.lat},"lng":${batch.lng}""" else ""
+            val body = """{"samples":$samplesJson,"window_ms":${batch.windowMs}$latPart}"""
+            Log.d(TAG, "IMU POST session=$sessionId samples=${batch.samples.size} body=$body")
+
+            val url = java.net.URL("${BuildConfig.SERVER_BASE_URL}/api/v1/sessions/$sessionId/imu")
+            val conn = url.openConnection() as java.net.HttpURLConnection
+            conn.requestMethod = "POST"
+            conn.setRequestProperty("Content-Type", "application/json")
+            conn.doOutput = true
+            conn.connectTimeout = 5_000
+            conn.readTimeout = 5_000
+            conn.outputStream.write(body.toByteArray())
+
+            val code = conn.responseCode
+            Log.d(TAG, "IMU POST response: $code")
+            conn.disconnect()
+        } catch (e: Exception) {
+            Log.e(TAG, "IMU POST failed: ${e.message}")
+        }
     }
 
     /**

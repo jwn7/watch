@@ -2,10 +2,14 @@ package com.issr.watch.service
 
 import android.content.Context
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.hardware.Sensor
 import android.hardware.SensorEvent
 import android.hardware.SensorEventListener
 import android.hardware.SensorManager
+import android.location.Location
+import android.location.LocationListener
+import android.location.LocationManager
 import android.os.PowerManager
 import android.speech.tts.TextToSpeech
 import android.util.Log
@@ -29,7 +33,7 @@ class ImuService : LifecycleService() {
         const val ACTION_START = "com.issr.watch.ACTION_START"
         const val ACTION_STOP  = "com.issr.watch.ACTION_STOP"
         const val EXTRA_SESSION_ID = "session_id"
-        const val BATCH_WINDOW_MS = 500L
+        const val BATCH_WINDOW_MS = 1000L  // 1초 배치 (데이터 수집 모드)
 
         // External callbacks — set by MainActivity before starting service
         var onBatchReady: ((ImuBatch) -> Unit)? = null
@@ -37,16 +41,22 @@ class ImuService : LifecycleService() {
     }
 
     private lateinit var sensorManager: SensorManager
+    private var locationManager: LocationManager? = null
     private var wakeLock: PowerManager.WakeLock? = null
     private lateinit var tts: TextToSpeech
     private val ttsReady = AtomicBoolean(false)
 
     private val pendingSamples = CopyOnWriteArrayList<ImuSample>()
     private val currentSessionId = AtomicReference<String?>(null)
+    private val lastLocation = AtomicReference<Location?>(null)
     private val accelData = FloatArray(3)
     private val gyroData  = FloatArray(3)
     private var lastAccelTime = 0L
     private var lastGyroTime  = 0L
+
+    private val locationListener = LocationListener { location ->
+        lastLocation.set(location)
+    }
 
     private val sensorListener = object : SensorEventListener {
         override fun onSensorChanged(event: SensorEvent) {
@@ -109,6 +119,7 @@ class ImuService : LifecycleService() {
                 currentSessionId.set(sessionId)
                 acquireWakeLock()
                 registerSensors()
+                registerLocation()
                 startBatchLoop()
                 Log.d(TAG, "ImuService started for session: $sessionId")
             }
@@ -144,6 +155,24 @@ class ImuService : LifecycleService() {
         Log.d(TAG, "Sensors registered at SENSOR_DELAY_GAME (50Hz)")
     }
 
+    @Suppress("MissingPermission")
+    private fun registerLocation() {
+        locationManager = getSystemService(Context.LOCATION_SERVICE) as LocationManager
+        val hasPerm = checkSelfPermission(android.Manifest.permission.ACCESS_FINE_LOCATION) ==
+                PackageManager.PERMISSION_GRANTED
+        if (!hasPerm) {
+            Log.w(TAG, "Location permission not granted — GPS skipped")
+            return
+        }
+        locationManager?.requestLocationUpdates(
+            LocationManager.GPS_PROVIDER,
+            1_000L,   // 1초 간격
+            1f,       // 1m 이동 시
+            locationListener
+        )
+        Log.d(TAG, "GPS location updates registered")
+    }
+
     private fun startBatchLoop() {
         val sessionId = currentSessionId.get() ?: return
         lifecycleScope.launch(Dispatchers.IO) {
@@ -152,10 +181,13 @@ class ImuService : LifecycleService() {
                 val snapshot = pendingSamples.toList()
                 pendingSamples.clear()
                 if (snapshot.isNotEmpty()) {
+                    val loc = lastLocation.get()
                     val batch = ImuBatch(
                         sessionId = sessionId,
                         samples = snapshot,
-                        windowMs = BATCH_WINDOW_MS.toInt()
+                        windowMs = BATCH_WINDOW_MS.toInt(),
+                        lat = loc?.latitude,
+                        lng = loc?.longitude
                     )
                     onBatchReady?.invoke(batch)
                 }
@@ -184,6 +216,8 @@ class ImuService : LifecycleService() {
 
     private fun stopCollection() {
         sensorManager.unregisterListener(sensorListener)
+        locationManager?.removeUpdates(locationListener)
+        locationManager = null
         wakeLock?.let {
             if (it.isHeld) it.release()
         }
