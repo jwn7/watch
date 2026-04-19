@@ -3,6 +3,7 @@ package com.issr.watch.service
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.content.pm.ServiceInfo
 import android.hardware.Sensor
 import android.hardware.SensorEvent
 import android.hardware.SensorEventListener
@@ -10,6 +11,7 @@ import android.hardware.SensorManager
 import android.location.Location
 import android.location.LocationListener
 import android.location.LocationManager
+import android.os.Build
 import android.os.PowerManager
 import android.speech.tts.TextToSpeech
 import android.util.Log
@@ -107,10 +109,20 @@ class ImuService : LifecycleService() {
         super.onStartCommand(intent, flags, startId)
 
         // CRITICAL: startForeground MUST be called first (C-3 mitigation)
-        startForeground(
-            NotificationHelper.NOTIFICATION_ID,
-            NotificationHelper.build(this, SafetyGrade.SAFE)
-        )
+        // Android 14+ enforces runtime permission check for each declared FGS type.
+        // Only include FOREGROUND_SERVICE_TYPE_LOCATION when permission is granted
+        // to avoid SecurityException when the user hasn't granted location yet.
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            val hasLocation = checkSelfPermission(android.Manifest.permission.ACCESS_FINE_LOCATION) ==
+                PackageManager.PERMISSION_GRANTED
+            val fgsType = if (hasLocation)
+                ServiceInfo.FOREGROUND_SERVICE_TYPE_HEALTH or ServiceInfo.FOREGROUND_SERVICE_TYPE_LOCATION
+            else
+                ServiceInfo.FOREGROUND_SERVICE_TYPE_HEALTH
+            startForeground(NotificationHelper.NOTIFICATION_ID, NotificationHelper.build(this, SafetyGrade.SAFE), fgsType)
+        } else {
+            startForeground(NotificationHelper.NOTIFICATION_ID, NotificationHelper.build(this, SafetyGrade.SAFE))
+        }
 
         when (intent?.action) {
             ACTION_START -> {
