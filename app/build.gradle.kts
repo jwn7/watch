@@ -20,9 +20,9 @@ android {
         versionName = "1.0"
 
         buildConfigField("String", "SERVER_BASE_URL",
-            "\"${project.findProperty("server.base.url") ?: "http://10.0.2.2:8080"}\"")
+            "\"${project.findProperty("server.base.url") ?: "https://port-0-watchsave-mof8rht583b71611.sel3.cloudtype.app"}\"")
         buildConfigField("String", "SERVER_WS_URL",
-            "\"${project.findProperty("server.ws.url") ?: "ws://10.0.2.2:8080/ws"}\"")
+            "\"${project.findProperty("server.ws.url") ?: "wss://port-0-watchsave-mof8rht583b71611.sel3.cloudtype.app/ws"}\"")
     }
 
     buildTypes {

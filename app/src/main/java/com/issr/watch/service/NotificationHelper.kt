@@ -16,25 +16,23 @@ object NotificationHelper {
         val channel = NotificationChannel(
             CHANNEL_ID,
             "보행 안전 모니터링",
-            NotificationManager.IMPORTANCE_LOW  // LOW: no sound, persistent
+            NotificationManager.IMPORTANCE_LOW
         ).apply {
-            description = "IMU 데이터 수집 중"
+            description = "IMU 데이터를 수집하는 중입니다."
             setShowBadge(false)
         }
-        val nm = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-        nm.createNotificationChannel(channel)
+        val notificationManager =
+            context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+        notificationManager.createNotificationChannel(channel)
     }
 
-    /**
-     * Builds the foreground notification showing current safety grade.
-     * Per D-08: ongoing notification must display current safety grade text.
-     */
     fun build(context: Context, grade: SafetyGrade = SafetyGrade.SAFE): Notification {
         val (statusText, contentText) = when (grade) {
-            SafetyGrade.SAFE    -> "안전" to "보행 중 — 위험 없음"
-            SafetyGrade.CAUTION -> "주의" to "보행 중 — 주의 구간"
-            SafetyGrade.DANGER  -> "위험" to "보행 중 — 위험 구간"
+            SafetyGrade.SAFE -> "안전" to "보행 중입니다. 위험 구간이 없습니다."
+            SafetyGrade.CAUTION -> "주의" to "보행 중입니다. 주의 구간이 감지되었습니다."
+            SafetyGrade.DANGER -> "위험" to "보행 중입니다. 위험 구간이 감지되었습니다."
         }
+
         return NotificationCompat.Builder(context, CHANNEL_ID)
             .setContentTitle("ISSR 보행 안전: $statusText")
             .setContentText(contentText)

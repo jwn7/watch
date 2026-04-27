@@ -24,5 +24,6 @@ data class ImuBatch(
     @SerialName("samples") val samples: List<ImuSample>,
     @EncodeDefault @SerialName("window_ms") val windowMs: Int = 500,
     @SerialName("lat") val lat: Double? = null,
-    @SerialName("lng") val lng: Double? = null
+    @SerialName("lng") val lng: Double? = null,
+    @SerialName("gps_accuracy_meters") val gpsAccuracyMeters: Double? = null
 )
