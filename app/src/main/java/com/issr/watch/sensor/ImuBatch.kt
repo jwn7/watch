@@ -27,3 +27,4 @@ data class ImuBatch(
     @SerialName("lng") val lng: Double? = null,
     @SerialName("gps_accuracy_meters") val gpsAccuracyMeters: Double? = null
 )
+

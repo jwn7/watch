@@ -23,22 +23,13 @@ import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicReference
 import kotlin.random.Random
 
-/**
- * OkHttp WebSocket STOMP 1.2 client.
- *
- * CRITICAL: No SockJS. Server uses plain RFC 6455 WebSocket at /ws.
- * Per Phase 1 decision: SockJS causes handshake failure with OkHttp native WebSocket.
- *
- * Threading model: OkHttp callbacks run on OkHttp dispatcher thread.
- * All coroutine operations use a Channel bridge to avoid thread-safety issues.
- */
 class StompClient(private val coroutineScope: CoroutineScope) {
 
     companion object {
         const val TAG = "StompClient"
-        const val HEARTBEAT_INTERVAL_MS = 9_000L  // Send every 9s for 10s server window
+        const val HEARTBEAT_INTERVAL_MS = 9_000L
         const val BASE_DELAY_MS = 1_000L
-        const val MAX_DELAY_MS  = 30_000L
+        const val MAX_DELAY_MS = 30_000L
         const val MAX_RECONNECT_ATTEMPTS = 5
     }
 
@@ -56,15 +47,9 @@ class StompClient(private val coroutineScope: CoroutineScope) {
 
     private val okHttpClient = OkHttpClient.Builder()
         .connectTimeout(10, TimeUnit.SECONDS)
-        .readTimeout(0, TimeUnit.SECONDS)  // 0 = no timeout for persistent WebSocket
+        .readTimeout(0, TimeUnit.SECONDS)
         .build()
 
-    /**
-     * Connect to the STOMP server and subscribe to the safety grade topic.
-     * Call before sendBatch().
-     *
-     * @param sessionId The walking session UUID obtained from POST /api/v1/sessions
-     */
     fun connect(sessionId: String) {
         this.sessionId = sessionId
         reconnectJob?.cancel()
@@ -74,18 +59,17 @@ class StompClient(private val coroutineScope: CoroutineScope) {
 
     private fun doConnect(sessionId: String) {
         val request = Request.Builder()
-            .url(BuildConfig.SERVER_WS_URL)  // D-13: no hardcoding
+            .url(BuildConfig.SERVER_WS_URL)
             .build()
 
         okHttpClient.newWebSocket(request, object : WebSocketListener() {
             override fun onOpen(webSocket: WebSocket, response: Response) {
-                Log.d(TAG, "WebSocket opened — sending CONNECT frame")
+                Log.d(TAG, "WebSocket opened - sending CONNECT frame")
                 currentWebSocket.set(webSocket)
                 webSocket.send(buildConnectFrame(10_000))
             }
 
             override fun onMessage(webSocket: WebSocket, text: String) {
-                // Bridge to coroutine via Channel (Pitfall 5 mitigation)
                 incomingFrames.trySend(text)
             }
 
@@ -115,14 +99,15 @@ class StompClient(private val coroutineScope: CoroutineScope) {
     }
 
     private fun processFrame(raw: String) {
-        val frame = parseStompFrame(raw) ?: return  // heartbeat or blank
+        val frame = parseStompFrame(raw) ?: return
         when (frame.command) {
             "CONNECTED" -> {
-                Log.d(TAG, "STOMP CONNECTED — subscribing to grade topic")
+                Log.d(TAG, "STOMP CONNECTED - subscribing to grade topic")
                 val destination = "/topic/session/$sessionId/grade"
                 currentWebSocket.get()?.send(buildSubscribeFrame(destination, "sub-0"))
                 startHeartbeat()
             }
+
             "MESSAGE" -> {
                 val body = frame.body.trim()
                 if (body.isNotEmpty()) {
@@ -131,6 +116,7 @@ class StompClient(private val coroutineScope: CoroutineScope) {
                     }
                 }
             }
+
             "ERROR" -> {
                 Log.e(TAG, "STOMP ERROR frame: ${frame.body}")
             }
@@ -141,9 +127,9 @@ class StompClient(private val coroutineScope: CoroutineScope) {
         return try {
             val jsonObj = json.parseToJsonElement(body).jsonObject
             when (jsonObj["grade"]?.jsonPrimitive?.content) {
-                "SAFE"    -> SafetyGrade.SAFE
+                "SAFE" -> SafetyGrade.SAFE
                 "CAUTION" -> SafetyGrade.CAUTION
-                "DANGER"  -> SafetyGrade.DANGER
+                "DANGER" -> SafetyGrade.DANGER
                 else -> null
             }
         } catch (e: Exception) {
@@ -157,18 +143,14 @@ class StompClient(private val coroutineScope: CoroutineScope) {
         heartbeatJob = coroutineScope.launch(Dispatchers.IO) {
             while (isActive) {
                 delay(HEARTBEAT_INTERVAL_MS)
-                currentWebSocket.get()?.send("\n")  // STOMP 1.2 heartbeat frame
+                currentWebSocket.get()?.send("\n")
             }
         }
     }
 
-    /**
-     * Send an IMU batch to the server.
-     * Must be called only after connect() succeeds (STOMP CONNECTED received).
-     */
     fun sendBatch(batch: ImuBatch) {
         val ws = currentWebSocket.get() ?: run {
-            Log.w(TAG, "sendBatch called but WebSocket not connected — dropping batch")
+            Log.w(TAG, "sendBatch called but WebSocket not connected - dropping batch")
             return
         }
         val body = Json.encodeToString(ImuBatch.serializer(), batch)
@@ -177,9 +159,6 @@ class StompClient(private val coroutineScope: CoroutineScope) {
         ws.send(frame)
     }
 
-    /**
-     * Gracefully disconnect STOMP and close WebSocket.
-     */
     fun disconnect() {
         reconnectJob?.cancel()
         heartbeatJob?.cancel()
@@ -192,11 +171,6 @@ class StompClient(private val coroutineScope: CoroutineScope) {
         sessionId = null
     }
 
-    /**
-     * Exponential backoff reconnect.
-     * Base: 1s, max: 30s, jitter: ±500ms. After MAX_RECONNECT_ATTEMPTS, notify via callback.
-     * Per CONTEXT.md D-12 / ROADMAP Phase 3 task 4 / Pitfall M-5.
-     */
     private fun startReconnect(sessionId: String) {
         reconnectJob?.cancel()
         reconnectJob = coroutineScope.launch(Dispatchers.IO) {
@@ -213,12 +187,10 @@ class StompClient(private val coroutineScope: CoroutineScope) {
                 if (attempt >= MAX_RECONNECT_ATTEMPTS) {
                     Log.e(TAG, "Reconnect failed after $attempt attempts")
                     onReconnectFailed?.invoke()
-                    // Continue retrying (but notify user each time beyond threshold)
                 }
 
                 doConnect(sessionId)
-                // Wait for onOpen or onFailure to signal result
-                delay(10_000L)  // Give 10s for connection to establish before next attempt
+                delay(10_000L)
                 if (currentWebSocket.get() != null) {
                     Log.d(TAG, "Reconnect succeeded on attempt $attempt")
                     return@launch

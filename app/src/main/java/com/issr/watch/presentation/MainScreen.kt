@@ -35,18 +35,12 @@ fun MainScreen(
             if (isRunning) {
                 Button(
                     onClick = onStopClick,
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = Color(0xFFE74C3C)  // Red — STOP
-                    )
                 ) {
                     Text("중지")
                 }
             } else {
                 Button(
                     onClick = onStartClick,
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = Color(0xFF2ECC71)  // Green — START
-                    )
                 ) {
                     Text("시작")
                 }
