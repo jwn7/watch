@@ -1,4 +1,4 @@
-# ISSR Watch
+# Watch
 
 Wear OS watch app for collecting IMU data, creating walking sessions, uploading sensor batches to WatchSave, and receiving safety grade updates from the backend.
 
